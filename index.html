@@ -270,10 +270,62 @@ function httpErr(res) {
   return new Error("GitHub 錯誤 " + res.status);
 }
 
+/* 三方合併：base = 上次與 GitHub 同步時的內容。哪一邊相對 base 有改，就用哪一邊；兩邊都改時以本機為準。 */
+const BASE_KEY = "gold-price-base";
+let base = readJSON(BASE_KEY);
+function setBase(s) { base = s; writeJSON(BASE_KEY, s); }
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function merge1(b, l, r) {
+  if (same(l, b)) return r;
+  if (same(r, b)) return l;
+  return l;
+}
+function merge(b0, local, remote) {
+  const b = b0 || remote;
+  const out = {};
+  for (const k of ["priceUnit", "rounding", "roundMode"]) out[k] = merge1(b[k], local[k], remote[k]) ?? DEFAULT_STATE[k];
+
+  const byDate = arr => new Map((arr || []).map(h => [h.date, h]));
+  const Bh = byDate(b.history), Lh = byDate(local.history), Rh = byDate(remote.history);
+  const hist = [];
+  for (const d of new Set([...Lh.keys(), ...Rh.keys()])) {
+    const v = merge1(Bh.get(d), Lh.get(d), Rh.get(d));
+    if (v) hist.push(v);
+  }
+  hist.sort((x, y) => y.date.localeCompare(x.date));
+  out.history = hist.slice(0, 60);
+  out.current = out.history[0] || null;
+
+  const byId = arr => new Map((arr || []).map(i => [String(i.id), i]));
+  const Bi = byId(b.items), Li = byId(local.items), Ri = byId(remote.items);
+  const order = [...new Set([...Li.keys(), ...Ri.keys()])];
+  out.items = [];
+  for (const id of order) {
+    const bi = Bi.get(id), li = Li.get(id), ri = Ri.get(id);
+    let v;
+    if (bi && li && ri) {
+      v = {};
+      for (const k of new Set([...Object.keys(li), ...Object.keys(ri)])) v[k] = same(li[k], bi[k]) ? ri[k] : li[k];
+    } else v = merge1(bi, li, ri);
+    if (v) out.items.push(v);
+  }
+  return out;
+}
+
+function adopt(next) {
+  const prevCur = state.current;
+  state = withDefaults(next);
+  writeJSON(STORE_KEY, state);
+  renderAll(!same(prevCur, state.current));
+}
+const parseRemote = j => withDefaults(JSON.parse(b64decode(j.content)));
+
 async function pull() {
   if (!configured() || syncing) return;
   if (dirty) return push();
   syncing = true; setSync("busy", "同步中…");
+  const seq = editSeq;
   try {
     const res = await gh("GET");
     if (res.status === 404) {
@@ -282,15 +334,29 @@ async function pull() {
     }
     if (!res.ok) throw httpErr(res);
     const j = await res.json();
+    const remote = parseRemote(j);
     remoteSha = j.sha;
-    state = withDefaults(JSON.parse(b64decode(j.content)));
-    writeJSON(STORE_KEY, state);
-    renderAll(true);
+    const editedMeanwhile = seq !== editSeq;
+    adopt(editedMeanwhile ? merge(base, state, remote) : remote);
+    setBase(remote);
+    if (editedMeanwhile) { syncing = false; return push(); }
     setSync("ok", "已同步");
   } catch (e) {
-    setSync("err", "同步失敗：" + errText(e));
+    setSync("err", "同步失敗：" + errText(e) + "（點此重試）");
   }
   syncing = false;
+}
+
+async function mergeLatestRemote() {
+  const g = await gh("GET");
+  if (g.status === 404) { remoteSha = null; return; }
+  if (!g.ok) throw httpErr(g);
+  const j = await g.json();
+  if (j.sha === remoteSha) return;
+  const remote = parseRemote(j);
+  adopt(merge(base, state, remote));
+  setBase(remote);
+  remoteSha = j.sha;
 }
 
 async function push(leaving) {
@@ -298,21 +364,27 @@ async function push(leaving) {
   if (!configured()) return;
   if (syncing) { pendingPush = true; return; }
   syncing = true; setSync("busy", "儲存中…");
-  const seq = editSeq;
-  const put = () => gh("PUT", {
+  let seq = editSeq;
+  const put = (body) => gh("PUT", {
     message: "更新 " + today(),
-    content: b64encode(JSON.stringify(state, null, 2)),
+    content: b64encode(body),
     ...(remoteSha ? { sha: remoteSha } : {}),
   }, leaving);
   try {
-    let res = await put();
+    // page is closing: no time for a round trip, rely on the conflict retry / next open
+    if (!leaving) await mergeLatestRemote();
+    seq = editSeq;
+    let body = JSON.stringify(state, null, 2);
+    let res = await put(body);
     if (res.status === 409 || res.status === 422) {
-      // file changed on another device since we last read it; last write wins
-      const g = await gh("GET");
-      if (g.ok) { remoteSha = (await g.json()).sha; res = await put(); }
+      await mergeLatestRemote();
+      seq = editSeq;
+      body = JSON.stringify(state, null, 2);
+      res = await put(body);
     }
     if (!res.ok) throw httpErr(res);
     remoteSha = (await res.json()).content.sha;
+    setBase(JSON.parse(body));
     if (seq === editSeq) { setDirty(false); setSync("ok", "已同步"); }
   } catch (e) {
     setSync("err", "未同步：" + errText(e) + "（點此重試）");
@@ -336,6 +408,8 @@ document.addEventListener("visibilitychange", () => {
   else if (dirty) push(true);
 });
 window.addEventListener("pageshow", e => { if (e.persisted) pull(); });
+// a Mac window stays "visible" while another app is in front, so visibilitychange alone misses coming back to it
+window.addEventListener("focus", () => pull());
 
 /* ---------- 畫面 ---------- */
 function toast(msg) {
@@ -361,9 +435,13 @@ function renderStatus() {
 
 function renderItems() {
   const tbody = $("items");
+  const ae = document.activeElement;
+  const keep = ae && ae.dataset && ae.dataset.k && tbody.contains(ae)
+    ? { id: ae.closest("tr").dataset.id, k: ae.dataset.k, s: ae.selectionStart, e: ae.selectionEnd } : null;
   tbody.innerHTML = "";
   for (const item of state.items) {
     const tr = document.createElement("tr");
+    tr.dataset.id = item.id;
     tr.innerHTML = `
       <td class="name" data-label="品名"><input data-k="name"></td>
       <td class="num" data-label="重量"><input data-k="weight" type="number" inputmode="decimal" step="0.01" min="0"></td>
@@ -384,6 +462,10 @@ function renderItems() {
     });
     tbody.appendChild(tr);
     updateRow(tr, item);
+  }
+  if (keep) {
+    const el = tbody.querySelector(`tr[data-id="${CSS.escape(String(keep.id))}"] [data-k="${keep.k}"]`);
+    if (el) { el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch (e) {} }
   }
 }
 
@@ -430,7 +512,8 @@ $("rounding").addEventListener("change", e => { state.rounding = Number(e.target
 $("roundMode").addEventListener("change", e => { state.roundMode = e.target.value; save(); renderItems(); });
 
 $("addBtn").addEventListener("click", () => {
-  const id = Math.max(0, ...state.items.map(i => i.id)) + 1;
+  // random id so items added on two devices before syncing never collide
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   state.items.push({ id, name: "", weight: 1, wUnit: "qian", labor: 800 });
   save(); renderItems();
   const inputs = $("items").querySelectorAll('input[data-k="name"]');
@@ -454,7 +537,7 @@ $("cfgSave").addEventListener("click", () => {
   cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
   if (!configured()) { toast("三個欄位都要填"); return; }
   writeJSON(CFG_KEY, cfg);
-  remoteSha = null; setDirty(false);
+  remoteSha = null; setDirty(false); setBase(null);
   $("syncPanel").open = false;
   pull();
 });
