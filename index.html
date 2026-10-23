@@ -22,7 +22,7 @@
   .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   h1 { font-size: 1.5rem; margin: 0; color: var(--gold); }
-  .sync { font-size: .85rem; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+  .sync { cursor: pointer; font-size: .85rem; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
   .sync.ok { color: var(--down); border-color: var(--down); }
   .sync.busy { color: var(--gold); border-color: var(--gold); }
   .sync.err { color: var(--up); border-color: var(--up); }
@@ -224,7 +224,14 @@ function itemPrice(item, entry) {
 }
 
 /* ---------- GitHub 同步 ---------- */
-let remoteSha = null, dirty = false, syncing = false, pendingPush = false, pushTimer = null;
+const DIRTY_KEY = "gold-price-dirty";
+let remoteSha = null, syncing = false, pendingPush = false, pushTimer = null, editSeq = 0;
+// persisted so edits not yet uploaded survive a reload instead of being overwritten by the remote copy
+let dirty = (() => { try { return localStorage.getItem(DIRTY_KEY) === "1"; } catch (e) { return false; } })();
+function setDirty(v) {
+  dirty = v;
+  try { v ? localStorage.setItem(DIRTY_KEY, "1") : localStorage.removeItem(DIRTY_KEY); } catch (e) {}
+}
 
 const configured = () => cfg.owner && cfg.repo && cfg.token;
 function setSync(kind, text) { const el = $("sync"); el.className = "sync no-print " + kind; el.textContent = text; }
@@ -240,10 +247,10 @@ function b64decode(b64) {
   return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
 }
 
-async function gh(method, body) {
+async function gh(method, body, keepalive) {
   const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${DATA_PATH}`;
   return fetch(url, {
-    method, cache: "no-store",
+    method, cache: "no-store", keepalive: !!keepalive,
     headers: {
       "Authorization": "Bearer " + cfg.token,
       "Accept": "application/vnd.github+json",
@@ -286,16 +293,17 @@ async function pull() {
   syncing = false;
 }
 
-async function push() {
+async function push(leaving) {
   clearTimeout(pushTimer);
   if (!configured()) return;
   if (syncing) { pendingPush = true; return; }
-  syncing = true; dirty = false; setSync("busy", "儲存中…");
+  syncing = true; setSync("busy", "儲存中…");
+  const seq = editSeq;
   const put = () => gh("PUT", {
     message: "更新 " + today(),
     content: b64encode(JSON.stringify(state, null, 2)),
     ...(remoteSha ? { sha: remoteSha } : {}),
-  });
+  }, leaving);
   try {
     let res = await put();
     if (res.status === 409 || res.status === 422) {
@@ -305,19 +313,19 @@ async function push() {
     }
     if (!res.ok) throw httpErr(res);
     remoteSha = (await res.json()).content.sha;
-    setSync("ok", "已同步");
+    if (seq === editSeq) { setDirty(false); setSync("ok", "已同步"); }
   } catch (e) {
-    dirty = true;
-    setSync("err", "未同步：" + errText(e));
+    setSync("err", "未同步：" + errText(e) + "（點此重試）");
   }
   syncing = false;
-  if (pendingPush) { pendingPush = false; push(); }
+  if (pendingPush || (dirty && seq !== editSeq)) { pendingPush = false; push(); }
 }
 
 function save() {
   writeJSON(STORE_KEY, state);
+  editSeq++;
   if (!configured()) return;
-  dirty = true;
+  setDirty(true);
   setSync("busy", "待儲存…");
   clearTimeout(pushTimer);
   pushTimer = setTimeout(push, 1200);
@@ -325,8 +333,9 @@ function save() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") pull();
-  else if (dirty) push();
+  else if (dirty) push(true);
 });
+window.addEventListener("pageshow", e => { if (e.persisted) pull(); });
 
 /* ---------- 畫面 ---------- */
 function toast(msg) {
@@ -445,9 +454,13 @@ $("cfgSave").addEventListener("click", () => {
   cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
   if (!configured()) { toast("三個欄位都要填"); return; }
   writeJSON(CFG_KEY, cfg);
-  remoteSha = null; dirty = false;
+  remoteSha = null; setDirty(false);
   $("syncPanel").open = false;
   pull();
+});
+$("sync").addEventListener("click", () => {
+  if (configured()) pull();
+  else $("syncPanel").open = true;
 });
 $("syncNow").addEventListener("click", () => {
   if (!configured()) { toast("請先完成同步設定"); return; }
