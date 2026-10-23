@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>黃金飾品售價計算</title>
+<style>
+  :root {
+    --bg: #faf7f0; --card: #ffffff; --text: #2b2418; --muted: #7a6f5c;
+    --line: #e8e0cf; --gold: #b8860b; --gold-soft: #f5ecd3; --up: #c0392b; --down: #1e8449;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1712; --card: #24201a; --text: #f0e9db; --muted: #a89c86;
+      --line: #3a3328; --gold: #e0b44c; --gold-soft: #3a3020; --up: #ff7b6b; --down: #5fd38d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.5rem; margin: 0; color: var(--gold); }
+  .sync { font-size: .85rem; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+  .sync.ok { color: var(--down); border-color: var(--down); }
+  .sync.busy { color: var(--gold); border-color: var(--gold); }
+  .sync.err { color: var(--up); border-color: var(--up); }
+  .sub { color: var(--muted); font-size: .9rem; margin: 4px 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details[open] summary { margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); gap: 4px; }
+  input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
+  .big { font-size: 1.4rem; width: 180px; font-weight: 600; }
+  button { font: inherit; border: 1px solid var(--gold); background: var(--gold); color: #fff;
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--gold); }
+  button.danger { background: transparent; border-color: var(--line); color: var(--muted); padding: 6px 10px; }
+  button:hover { filter: brightness(1.08); }
+  .status { margin-top: 10px; font-size: .95rem; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .formula { background: var(--gold-soft); border-radius: 8px; padding: 10px 12px; font-size: .9rem; margin-top: 10px; }
+  .hint { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  th { font-size: .8rem; color: var(--muted); font-weight: 500; }
+  td input { width: 100%; }
+  td.num input { text-align: right; }
+  .price { font-weight: 700; font-size: 1.1rem; color: var(--gold); text-align: right; white-space: nowrap; }
+  .diff { font-size: .85rem; text-align: right; white-space: nowrap; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .hist { font-size: .85rem; color: var(--muted); margin: 8px 0 0; padding-left: 18px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text);
+    color: var(--bg); padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 720px) {
+    thead { display: none; }
+    tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    td { border: none; padding: 0; }
+    td::before { content: attr(data-label); display: block; font-size: .75rem; color: var(--muted); }
+    td.name { grid-column: 1 / -1; }
+    .price, .diff { text-align: left; }
+    .big { width: 100%; }
+    .row label { flex: 1 1 140px; }
+  }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff; color: #000; }
+    .card { border: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>黃金飾品售價計算</h1>
+    <span class="sync no-print" id="sync">未設定同步</span>
+  </div>
+  <div class="sub">輸入今日公告金價，所有商品售價自動重算。手機、電腦資料自動同步。</div>
+
+  <div class="card">
+    <h2>① 今日金價</h2>
+    <div class="row">
+      <label>公告金價（元）
+        <input id="priceInput" class="big" type="number" inputmode="decimal" min="0" step="1">
+      </label>
+      <label>計價單位
+        <select id="priceUnit">
+          <option value="qian">每台錢</option>
+          <option value="liang">每台兩</option>
+          <option value="gram">每公克</option>
+        </select>
+      </label>
+      <button id="applyBtn">更新金價</button>
+    </div>
+    <div class="status" id="status"></div>
+    <ul class="hist" id="history"></ul>
+  </div>
+
+  <div class="card">
+    <h2>② 商品售價</h2>
+    <table>
+      <thead>
+        <tr><th style="width:30%">品名</th><th>重量</th><th>單位</th><th>工錢</th>
+          <th style="text-align:right">售價</th><th style="text-align:right">較上次</th><th class="no-print"></th></tr>
+      </thead>
+      <tbody id="items"></tbody>
+    </table>
+    <div class="actions no-print">
+      <button id="addBtn" class="ghost">＋ 新增商品</button>
+      <button id="copyBtn">複製價目表（貼 LINE 用）</button>
+      <button id="printBtn" class="ghost">列印</button>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <details>
+      <summary>③ 計算規則</summary>
+      <div class="row">
+        <label>售價取整
+          <select id="rounding">
+            <option value="1">到 1 元</option>
+            <option value="10">到 10 元</option>
+            <option value="100">到 100 元</option>
+          </select>
+        </label>
+        <label>取整方式
+          <select id="roundMode">
+            <option value="round">四捨五入</option>
+            <option value="ceil">無條件進位</option>
+            <option value="floor">無條件捨去</option>
+          </select>
+        </label>
+      </div>
+      <div class="formula">
+        售價 = 重量 × 金價 + 工錢<br>
+        <small>（1 台兩 = 10 台錢 = 37.5 公克；重量與金價單位不同時會自動換算）</small>
+      </div>
+    </details>
+  </div>
+
+  <div class="card no-print">
+    <details id="syncPanel">
+      <summary>④ 同步設定（每台裝置第一次使用時設定）</summary>
+      <div class="row">
+        <label>GitHub 帳號
+          <input id="cfgOwner" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+        <label>資料 repo 名稱
+          <input id="cfgRepo" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+        <label>存取金鑰（token）
+          <input id="cfgToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="cfgSave">儲存並連線</button>
+        <button id="syncNow" class="ghost">立即同步</button>
+        <button id="cfgClear" class="ghost">清除這台裝置的金鑰</button>
+      </div>
+      <div class="hint">金鑰只存在這台裝置的瀏覽器裡，不會出現在網頁原始碼中。</div>
+    </details>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STORE_KEY = "gold-price-calc-v1";
+const CFG_KEY = "gold-price-gh-config";
+const DATA_PATH = "data.json";
+const GRAMS = { gram: 1, qian: 3.75, liang: 37.5 };
+const UNIT_NAME = { gram: "克", qian: "錢", liang: "兩" };
+
+const DEFAULT_STATE = {
+  priceUnit: "qian",
+  current: null,
+  history: [],
+  rounding: 10,
+  roundMode: "round",
+  items: [
+    { id: 1, name: "經典麻花手鍊", weight: 1.00, wUnit: "qian", labor: 800 },
+    { id: 2, name: "幸運草手鍊",   weight: 1.50, wUnit: "qian", labor: 1200 },
+    { id: 3, name: "素面圓珠手鍊", weight: 2.00, wUnit: "qian", labor: 1000 },
+    { id: 4, name: "貔貅編繩手鍊", weight: 0.50, wUnit: "qian", labor: 600 },
+    { id: 5, name: "細版愛心項鍊", weight: 1.20, wUnit: "qian", labor: 900 },
+  ],
+};
+
+function readJSON(key) {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function writeJSON(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+}
+function withDefaults(data) {
+  return { ...structuredClone(DEFAULT_STATE), ...(data || {}) };
+}
+
+let state = withDefaults(readJSON(STORE_KEY));
+let cfg = readJSON(CFG_KEY) || {};
+if (!cfg.owner && location.hostname.endsWith(".github.io")) cfg.owner = location.hostname.split(".")[0];
+if (!cfg.repo) cfg.repo = "gold-price-data";
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => "$" + Math.round(n).toLocaleString("zh-TW");
+
+/* ---------- 計算 ---------- */
+function perGram(entry) { return entry ? entry.price / GRAMS[entry.unit] : null; }
+function roundPrice(v) {
+  const step = Number(state.rounding);
+  return Math[state.roundMode](v / step) * step;
+}
+function itemPrice(item, entry) {
+  const g = perGram(entry);
+  if (g == null) return null;
+  const grams = (Number(item.weight) || 0) * GRAMS[item.wUnit];
+  return roundPrice(grams * g + (Number(item.labor) || 0));
+}
+
+/* ---------- GitHub 同步 ---------- */
+let remoteSha = null, dirty = false, syncing = false, pendingPush = false, pushTimer = null;
+
+const configured = () => cfg.owner && cfg.repo && cfg.token;
+function setSync(kind, text) { const el = $("sync"); el.className = "sync no-print " + kind; el.textContent = text; }
+
+function b64encode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+function b64decode(b64) {
+  const bin = atob(b64.replace(/\s/g, ""));
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+}
+
+async function gh(method, body) {
+  const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${DATA_PATH}`;
+  return fetch(url, {
+    method, cache: "no-store",
+    headers: {
+      "Authorization": "Bearer " + cfg.token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+function errText(e) {
+  if (e instanceof TypeError) return "沒有網路";
+  return e.message;
+}
+function httpErr(res) {
+  if (res.status === 401) return new Error("金鑰錯誤或已過期");
+  if (res.status === 403) return new Error("金鑰權限不足");
+  if (res.status === 404) return new Error("找不到資料 repo，請檢查帳號、repo 名稱與金鑰權限");
+  return new Error("GitHub 錯誤 " + res.status);
+}
+
+async function pull() {
+  if (!configured() || syncing) return;
+  if (dirty) return push();
+  syncing = true; setSync("busy", "同步中…");
+  try {
+    const res = await gh("GET");
+    if (res.status === 404) {
+      // data.json not created yet, or repo unreachable — a push will tell which
+      remoteSha = null; syncing = false; return push();
+    }
+    if (!res.ok) throw httpErr(res);
+    const j = await res.json();
+    remoteSha = j.sha;
+    state = withDefaults(JSON.parse(b64decode(j.content)));
+    writeJSON(STORE_KEY, state);
+    renderAll(true);
+    setSync("ok", "已同步");
+  } catch (e) {
+    setSync("err", "同步失敗：" + errText(e));
+  }
+  syncing = false;
+}
+
+async function push() {
+  clearTimeout(pushTimer);
+  if (!configured()) return;
+  if (syncing) { pendingPush = true; return; }
+  syncing = true; dirty = false; setSync("busy", "儲存中…");
+  const put = () => gh("PUT", {
+    message: "更新 " + today(),
+    content: b64encode(JSON.stringify(state, null, 2)),
+    ...(remoteSha ? { sha: remoteSha } : {}),
+  });
+  try {
+    let res = await put();
+    if (res.status === 409 || res.status === 422) {
+      // file changed on another device since we last read it; last write wins
+      const g = await gh("GET");
+      if (g.ok) { remoteSha = (await g.json()).sha; res = await put(); }
+    }
+    if (!res.ok) throw httpErr(res);
+    remoteSha = (await res.json()).content.sha;
+    setSync("ok", "已同步");
+  } catch (e) {
+    dirty = true;
+    setSync("err", "未同步：" + errText(e));
+  }
+  syncing = false;
+  if (pendingPush) { pendingPush = false; push(); }
+}
+
+function save() {
+  writeJSON(STORE_KEY, state);
+  if (!configured()) return;
+  dirty = true;
+  setSync("busy", "待儲存…");
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(push, 1200);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") pull();
+  else if (dirty) push();
+});
+
+/* ---------- 畫面 ---------- */
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+function renderStatus() {
+  const cur = state.current, prev = state.history[1];
+  if (!cur) $("status").textContent = "尚未輸入金價，請在上方輸入今日公告金價後按「更新金價」。";
+  else {
+    let html = `目前採用：<b>${cur.date}</b> 每${UNIT_NAME[cur.unit]} <b>${fmt(cur.price)}</b>`;
+    if (prev) {
+      const d = (perGram(cur) - perGram(prev)) * GRAMS[cur.unit];
+      if (Math.abs(d) >= 0.5) html += `　<span class="${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${fmt(Math.abs(d))}</span>`;
+      else html += "　（與上次相同）";
+    }
+    $("status").innerHTML = html;
+  }
+  $("history").innerHTML = state.history.slice(1, 6)
+    .map(h => `<li>${h.date}：每${UNIT_NAME[h.unit]} ${fmt(h.price)}</li>`).join("");
+}
+
+function renderItems() {
+  const tbody = $("items");
+  tbody.innerHTML = "";
+  for (const item of state.items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="name" data-label="品名"><input data-k="name"></td>
+      <td class="num" data-label="重量"><input data-k="weight" type="number" inputmode="decimal" step="0.01" min="0"></td>
+      <td data-label="單位"><select data-k="wUnit">
+        <option value="qian">錢</option><option value="gram">克</option><option value="liang">兩</option></select></td>
+      <td class="num" data-label="工錢"><input data-k="labor" type="number" inputmode="numeric" step="1" min="0"></td>
+      <td class="price" data-label="售價"></td>
+      <td class="diff" data-label="較上次"></td>
+      <td class="no-print"><button class="danger" title="刪除">✕</button></td>`;
+    tr.querySelectorAll("[data-k]").forEach(el => {
+      el.value = item[el.dataset.k];
+      el.addEventListener("input", () => { item[el.dataset.k] = el.value; save(); updateRow(tr, item); });
+    });
+    tr.querySelector("button.danger").addEventListener("click", () => {
+      if (!confirm(`確定刪除「${item.name || "未命名"}」？`)) return;
+      state.items = state.items.filter(i => i !== item);
+      save(); renderItems();
+    });
+    tbody.appendChild(tr);
+    updateRow(tr, item);
+  }
+}
+
+function updateRow(tr, item) {
+  const now = itemPrice(item, state.current);
+  const before = itemPrice(item, state.history[1]);
+  tr.querySelector(".price").textContent = now == null ? "—" : fmt(now);
+  const diffEl = tr.querySelector(".diff");
+  if (now == null || before == null) { diffEl.textContent = "—"; diffEl.className = "diff"; return; }
+  const d = now - before;
+  diffEl.className = "diff " + (d > 0 ? "up" : d < 0 ? "down" : "");
+  diffEl.textContent = d === 0 ? "持平" : (d > 0 ? "▲ " : "▼ ") + fmt(Math.abs(d));
+}
+
+function renderAll(fromRemote) {
+  $("priceUnit").value = state.priceUnit;
+  $("rounding").value = String(state.rounding);
+  $("roundMode").value = state.roundMode;
+  if (state.current && (fromRemote || !$("priceInput").value)) $("priceInput").value = state.current.price;
+  renderStatus(); renderItems();
+}
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/* ---------- 事件 ---------- */
+$("applyBtn").addEventListener("click", () => {
+  const price = Number($("priceInput").value);
+  if (!(price > 0)) { toast("請輸入正確的金價"); $("priceInput").focus(); return; }
+  const entry = { price, unit: state.priceUnit, date: today() };
+  // same-day re-entry replaces today's record instead of stacking
+  if (state.history[0] && state.history[0].date === entry.date) state.history[0] = entry;
+  else state.history.unshift(entry);
+  state.history = state.history.slice(0, 60);
+  state.current = entry;
+  save(); renderStatus(); renderItems();
+  toast("已更新金價，售價已重算");
+});
+$("priceInput").addEventListener("keydown", e => { if (e.key === "Enter") $("applyBtn").click(); });
+$("priceUnit").addEventListener("change", e => { state.priceUnit = e.target.value; save(); });
+$("rounding").addEventListener("change", e => { state.rounding = Number(e.target.value); save(); renderItems(); });
+$("roundMode").addEventListener("change", e => { state.roundMode = e.target.value; save(); renderItems(); });
+
+$("addBtn").addEventListener("click", () => {
+  const id = Math.max(0, ...state.items.map(i => i.id)) + 1;
+  state.items.push({ id, name: "", weight: 1, wUnit: "qian", labor: 800 });
+  save(); renderItems();
+  const inputs = $("items").querySelectorAll('input[data-k="name"]');
+  inputs[inputs.length - 1].focus();
+});
+
+$("copyBtn").addEventListener("click", async () => {
+  const cur = state.current;
+  if (!cur) { toast("請先輸入今日金價"); return; }
+  const lines = [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, ""];
+  for (const it of state.items) {
+    lines.push(`${it.name || "未命名"}（${it.weight}${UNIT_NAME[it.wUnit]}）　${fmt(itemPrice(it, cur))}`);
+  }
+  const text = lines.join("\n");
+  try { await navigator.clipboard.writeText(text); toast("已複製，可直接貼上"); }
+  catch (e) { prompt("請手動複製：", text); }
+});
+$("printBtn").addEventListener("click", () => window.print());
+
+$("cfgSave").addEventListener("click", () => {
+  cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
+  if (!configured()) { toast("三個欄位都要填"); return; }
+  writeJSON(CFG_KEY, cfg);
+  remoteSha = null; dirty = false;
+  $("syncPanel").open = false;
+  pull();
+});
+$("syncNow").addEventListener("click", () => {
+  if (!configured()) { toast("請先完成同步設定"); return; }
+  pull();
+});
+$("cfgClear").addEventListener("click", () => {
+  if (!confirm("清除這台裝置的金鑰？（商品資料不會被刪除）")) return;
+  cfg = { owner: cfg.owner, repo: cfg.repo };
+  writeJSON(CFG_KEY, cfg);
+  $("cfgToken").value = "";
+  setSync("", "未設定同步");
+});
+
+$("cfgOwner").value = cfg.owner || "";
+$("cfgRepo").value = cfg.repo || "";
+$("cfgToken").value = cfg.token || "";
+renderAll();
+if (configured()) pull();
+else { setSync("", "未設定同步"); $("syncPanel").open = true; }
+</script>
+</body>
+</html>
