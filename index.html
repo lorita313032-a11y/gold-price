@@ -409,6 +409,10 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", e => { if (e.persisted) pull(); });
 // a Mac window stays "visible" while another app is in front, so visibilitychange alone misses coming back to it
 window.addEventListener("focus", () => pull());
+// a window that never loses focus gets no event when another device changes the data
+setInterval(() => {
+  if (document.visibilityState === "visible" && configured() && !dirty) pull();
+}, 30000);
 
 /* ---------- 畫面 ---------- */
 function toast(msg) {
@@ -534,16 +538,31 @@ $("addBtn").addEventListener("click", () => {
   inputs[inputs.length - 1].focus();
 });
 
-$("copyBtn").addEventListener("click", async () => {
+function priceListText() {
   const cur = state.current;
-  if (!cur) { toast("請先輸入今日金價"); return; }
   const lines = [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, ""];
   for (const it of state.items) {
     lines.push(`${it.name || "未命名"}（${it.weight}${UNIT_NAME[it.wUnit]}）　${fmt(itemPrice(it, cur))}`);
   }
-  const text = lines.join("\n");
-  try { await navigator.clipboard.writeText(text); toast("已複製，可直接貼上"); }
-  catch (e) { prompt("請手動複製：", text); }
+  return lines.join("\n");
+}
+$("copyBtn").addEventListener("click", async () => {
+  if (!state.current) { toast("請先輸入今日金價"); return; }
+  // never hand a customer prices from a stale screen
+  const textReady = (async () => { if (configured()) await pull(); return priceListText(); })();
+  try {
+    if (window.ClipboardItem && navigator.clipboard.write) {
+      // Safari only allows a clipboard write started inside the tap itself, so the text is passed as a promise
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/plain": textReady.then(t => new Blob([t], { type: "text/plain" })),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(await textReady);
+    }
+    toast("已複製最新價目表，可直接貼上");
+  } catch (e) {
+    prompt("請手動複製：", await textReady);
+  }
 });
 $("printBtn").addEventListener("click", () => window.print());
 
