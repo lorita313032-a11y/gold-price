@@ -120,25 +120,9 @@
 
   <div class="card no-print">
     <details>
-      <summary>③ 計算規則</summary>
-      <div class="row">
-        <label>售價取整
-          <select id="rounding">
-            <option value="1">到 1 元</option>
-            <option value="10">到 10 元</option>
-            <option value="100">到 100 元</option>
-          </select>
-        </label>
-        <label>取整方式
-          <select id="roundMode">
-            <option value="round">四捨五入</option>
-            <option value="ceil">無條件進位</option>
-            <option value="floor">無條件捨去</option>
-          </select>
-        </label>
-      </div>
+      <summary>③ 計算公式</summary>
       <div class="formula">
-        售價 = 重量 × 金價 + 工錢<br>
+        售價 = 重量 × 金價 + 工錢（小數無條件捨去到 1 元）<br>
         <small>（1 台兩 = 10 台錢 = 37.5 公克；重量與金價單位不同時會自動換算）</small>
       </div>
     </details>
@@ -180,8 +164,6 @@ const DEFAULT_STATE = {
   priceUnit: "qian",
   current: null,
   history: [],
-  rounding: 10,
-  roundMode: "round",
   items: [
     { id: 1, name: "經典麻花手鍊", weight: 1.00, wUnit: "qian", labor: 800 },
     { id: 2, name: "幸運草手鍊",   weight: 1.50, wUnit: "qian", labor: 1200 },
@@ -212,8 +194,8 @@ const fmt = (n) => "$" + Math.round(n).toLocaleString("zh-TW");
 /* ---------- 計算 ---------- */
 function perGram(entry) { return entry ? entry.price / GRAMS[entry.unit] : null; }
 function roundPrice(v) {
-  const step = Number(state.rounding);
-  return Math[state.roundMode](v / step) * step;
+  // snap float noise first (1.2 錢 × 16700 comes out as 20039.999…), then drop the fraction
+  return Math.floor(Math.round(v * 1000) / 1000);
 }
 function itemPrice(item, entry) {
   const g = perGram(entry);
@@ -283,7 +265,7 @@ function merge1(b, l, r) {
 function merge(b0, local, remote) {
   const b = b0 || remote;
   const out = {};
-  for (const k of ["priceUnit", "rounding", "roundMode"]) out[k] = merge1(b[k], local[k], remote[k]) ?? DEFAULT_STATE[k];
+  for (const k of ["priceUnit"]) out[k] = merge1(b[k], local[k], remote[k]) ?? DEFAULT_STATE[k];
 
   const byDate = arr => new Map((arr || []).map(h => [h.date, h]));
   const Bh = byDate(b.history), Lh = byDate(local.history), Rh = byDate(remote.history);
@@ -485,8 +467,6 @@ function updateRow(tr, item) {
 
 function renderAll(fromRemote) {
   $("priceUnit").value = state.priceUnit;
-  $("rounding").value = String(state.rounding);
-  $("roundMode").value = state.roundMode;
   if (state.current && (fromRemote || !$("priceInput").value)) $("priceInput").value = state.current.price;
   renderStatus(); renderItems();
 }
@@ -526,8 +506,6 @@ $("priceUnit").addEventListener("change", e => {
   if (state.current) $("priceInput").value = Math.round(perGram(state.current) * GRAMS[state.priceUnit]);
   save();
 });
-$("rounding").addEventListener("change", e => { state.rounding = Number(e.target.value); save(); renderItems(); });
-$("roundMode").addEventListener("change", e => { state.roundMode = e.target.value; save(); renderItems(); });
 
 $("addBtn").addEventListener("click", () => {
   // random id so items added on two devices before syncing never collide
