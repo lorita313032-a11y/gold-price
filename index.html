@@ -97,7 +97,6 @@
           <option value="gram">每公克</option>
         </select>
       </label>
-      <button id="applyBtn">更新金價</button>
     </div>
     <div class="status" id="status"></div>
     <ul class="hist" id="history"></ul>
@@ -419,7 +418,7 @@ function toast(msg) {
 
 function renderStatus() {
   const cur = state.current, prev = state.history[1];
-  if (!cur) $("status").textContent = "尚未輸入金價，請在上方輸入今日公告金價後按「更新金價」。";
+  if (!cur) $("status").textContent = "尚未輸入金價，請在上方輸入今日公告金價，售價會自動重算。";
   else {
     let html = `目前採用：<b>${cur.date}</b> 每${UNIT_NAME[cur.unit]} <b>${fmt(cur.price)}</b>`;
     if (prev) {
@@ -494,20 +493,35 @@ function today() {
 }
 
 /* ---------- 事件 ---------- */
-$("applyBtn").addEventListener("click", () => {
+// applied on every keystroke so the box and the prices can never disagree
+// below this per-gram value the number is a half-typed entry ("1", "166"…), not a real gold price
+const MIN_PER_GRAM = 500;
+const plausible = price => price / GRAMS[state.priceUnit] >= MIN_PER_GRAM;
+function applyPrice() {
   const price = Number($("priceInput").value);
-  if (!(price > 0)) { toast("請輸入正確的金價"); $("priceInput").focus(); return; }
+  if (!plausible(price)) return;
   const entry = { price, unit: state.priceUnit, date: today() };
+  if (same(state.current, entry)) return;
   // same-day re-entry replaces today's record instead of stacking
   if (state.history[0] && state.history[0].date === entry.date) state.history[0] = entry;
   else state.history.unshift(entry);
   state.history = state.history.slice(0, 60);
   state.current = entry;
   save(); renderStatus(); renderItems();
-  toast("已更新金價，售價已重算");
+}
+$("priceInput").addEventListener("input", applyPrice);
+$("priceInput").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
+$("priceInput").addEventListener("blur", e => {
+  if (plausible(Number(e.target.value)) || !state.current) return;
+  e.target.value = state.current.price;
+  toast("金價數字不合理，已恢復為 " + fmt(state.current.price));
 });
-$("priceInput").addEventListener("keydown", e => { if (e.key === "Enter") $("applyBtn").click(); });
-$("priceUnit").addEventListener("change", e => { state.priceUnit = e.target.value; save(); });
+$("priceUnit").addEventListener("change", e => {
+  state.priceUnit = e.target.value;
+  // show the same gold price expressed in the new unit, so switching units alone never changes any selling price
+  if (state.current) $("priceInput").value = Math.round(perGram(state.current) * GRAMS[state.priceUnit]);
+  save();
+});
 $("rounding").addEventListener("change", e => { state.rounding = Number(e.target.value); save(); renderItems(); });
 $("roundMode").addEventListener("change", e => { state.roundMode = e.target.value; save(); renderItems(); });
 
