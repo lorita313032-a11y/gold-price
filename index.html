@@ -154,6 +154,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// bump on every upload of this file: open pages compare it with the live copy and reload themselves
+const APP_VERSION = "2026-10-25a";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -321,7 +323,7 @@ async function pull() {
     adopt(editedMeanwhile ? merge(base, state, remote) : remote);
     setBase(remote);
     if (editedMeanwhile) { syncing = false; return push(); }
-    setSync("ok", "已同步");
+    syncedOK();
   } catch (e) {
     setSync("err", "同步失敗：" + errText(e) + "（點此重試）");
   }
@@ -366,7 +368,7 @@ async function push(leaving) {
     if (!res.ok) throw httpErr(res);
     remoteSha = (await res.json()).content.sha;
     setBase(JSON.parse(body));
-    if (seq === editSeq) { setDirty(false); setSync("ok", "已同步"); }
+    if (seq === editSeq) { setDirty(false); syncedOK(); }
   } catch (e) {
     setSync("err", "未同步：" + errText(e) + "（點此重試）");
   }
@@ -384,16 +386,45 @@ function save() {
   pushTimer = setTimeout(push, 1200);
 }
 
+function syncedOK() {
+  const t = new Date();
+  const hms = [t.getHours(), t.getMinutes(), t.getSeconds()].map(n => String(n).padStart(2, "0")).join(":");
+  setSync("ok", "已同步 " + hms);
+  maybeReload();
+}
+
+/* ---------- 新版自動更新 ---------- */
+let updateReady = false;
+async function checkForUpdate() {
+  try {
+    // unique query string so neither the browser nor the GitHub Pages CDN serves a cached copy
+    const res = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION) { updateReady = true; maybeReload(); }
+  } catch (e) {}
+}
+// only reload when nothing is waiting to upload and she is not typing
+function maybeReload() {
+  if (!updateReady || dirty || syncing) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "SELECT")) return;
+  location.reload();
+}
+
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") pull();
+  if (document.visibilityState === "visible") { pull(); checkForUpdate(); }
   else if (dirty) push(true);
 });
 window.addEventListener("pageshow", e => { if (e.persisted) pull(); });
 // a Mac window stays "visible" while another app is in front, so visibilitychange alone misses coming back to it
 window.addEventListener("focus", () => pull());
 // a window that never loses focus gets no event when another device changes the data
+let tick = 0;
 setInterval(() => {
   if (document.visibilityState === "visible" && configured() && !dirty) pull();
+  if (++tick % 10 === 0) checkForUpdate();
+  else maybeReload();
 }, 30000);
 
 /* ---------- 畫面 ---------- */
