@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>黃金飾品售價計算</title>
 <style>
@@ -19,7 +19,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; line-height: 1.5; }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px calc(96px + env(safe-area-inset-bottom, 0px)); }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   h1 { font-size: 1.5rem; margin: 0; color: var(--gold); }
   .sync { cursor: pointer; font-size: .85rem; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
@@ -29,8 +29,6 @@
   .sub { color: var(--muted); font-size: .9rem; margin: 4px 0 20px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .card h2 { font-size: 1.05rem; margin: 0 0 12px; }
-  summary { cursor: pointer; font-weight: 600; }
-  details[open] summary { margin-bottom: 12px; }
   .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
   label { display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); gap: 4px; }
   input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
@@ -44,7 +42,7 @@
   button:hover { filter: brightness(1.08); }
   .status { margin-top: 10px; font-size: .95rem; }
   .up { color: var(--up); } .down { color: var(--down); }
-  .formula { background: var(--gold-soft); border-radius: 8px; padding: 10px 12px; font-size: .9rem; margin-top: 10px; }
+  .formula-foot { font-size: .8rem; color: var(--muted); text-align: center; margin: 24px 0 0; line-height: 1.7; }
   .hint { font-size: .8rem; color: var(--muted); margin-top: 8px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
@@ -56,9 +54,79 @@
   .diff { font-size: .85rem; text-align: right; white-space: nowrap; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .hist { font-size: .85rem; color: var(--muted); margin: 8px 0 0; padding-left: 18px; }
-  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text);
-    color: var(--bg); padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text);
+    color: var(--bg); padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 30; }
   .toast.show { opacity: 1; }
+
+  /* bottom tab bar, iPhone-app style: within thumb reach, clear of the home indicator */
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    background: var(--card); border-top: 1px solid var(--line);
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .tabbar button { background: none; border: 0; border-radius: 0; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px; font-size: .8rem; }
+  .tabbar button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tabbar button[aria-selected="true"] { color: var(--gold); font-weight: 700; }
+  .tabbar button:focus-visible { outline: 2px solid var(--gold); outline-offset: -4px; }
+  .tabbar button:hover { filter: none; color: var(--gold); }
+  .tab-title { font-size: 1.2rem; margin: 0 0 12px; }
+
+  /* help tab: the picture guide, scoped so its classes never touch the calculator's */
+  #tab-help { display: grid; gap: 40px; margin-top: 16px; }
+  #tab-help[hidden] { display: none; }
+  #tab-help h3 { margin: 0; font-size: 1.1rem; }
+  #tab-help p { margin: 0; }
+  #tab-help .lead { color: var(--muted); }
+  #tab-help .part { display: grid; gap: 14px; }
+  #tab-help .part > h3 { font-size: 1.25rem; }
+  #tab-help figure { margin: 0; }
+  #tab-help .art { width: 100%; height: auto; display: block; }
+  #tab-help .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  #tab-help .say { font-size: 1.1rem; }
+  #tab-help .say b { color: var(--gold); }
+  #tab-help .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  #tab-help .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+  #tab-help .step .n { color: var(--gold); font-size: 1.3rem; font-weight: 700; line-height: 1; }
+  #tab-help .step p { font-weight: 700; }
+  #tab-help .lights { display: grid; gap: 12px; }
+  #tab-help .light { display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: 14px; align-items: center; }
+  #tab-help .pill { justify-self: start; max-width: 100%; border: 1px solid currentColor; border-radius: 20px; padding: 6px 16px;
+    font-variant-numeric: tabular-nums; background: var(--card); }
+  #tab-help .p-ok { color: var(--down); } #tab-help .p-wait { color: var(--gold); }
+  #tab-help .p-bad { color: var(--up); } #tab-help .p-off { color: var(--muted); }
+  #tab-help .fixes { display: grid; gap: 14px; }
+  #tab-help .fix { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+    display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: center; }
+  #tab-help .fix .txt { display: grid; gap: 6px; min-width: 0; }
+  #tab-help .fix .why { color: var(--muted); }
+  #tab-help .fix .do { font-weight: 700; }
+  #tab-help .fix .do::before { content: "怎麼辦　"; color: var(--gold); }
+  #tab-help .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  #tab-help .rules ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px; }
+  #tab-help .rules li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; }
+  #tab-help .rescue { border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); }
+  #tab-help .rescue b { color: var(--text); }
+  @media (max-width: 560px) {
+    #tab-help .light { grid-template-columns: 1fr; gap: 6px; }
+    #tab-help .fix { grid-template-columns: 1fr; }
+    #tab-help .fix .art { max-width: 260px; }
+  }
+  #tab-help .k { stroke: var(--text); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  #tab-help .km { stroke: var(--muted); fill: none; stroke-width: 2.5; stroke-linecap: round; }
+  #tab-help .kg { stroke: var(--gold); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  #tab-help .kok { stroke: var(--down); fill: none; stroke-width: 2; }
+  #tab-help .kbad { stroke: var(--up); fill: none; stroke-width: 3; stroke-linecap: round; }
+  #tab-help .lc { stroke: var(--card); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  #tab-help .sf { fill: var(--card); }
+  #tab-help .g { fill: var(--gold); }
+  #tab-help .gs { fill: var(--gold-soft); }
+  #tab-help .okf { fill: var(--down); }
+  #tab-help .badf { fill: var(--up); }
+  #tab-help .t { fill: var(--text); font-weight: 700; }
+  #tab-help .tm { fill: var(--muted); }
+  #tab-help .tg { fill: var(--gold); font-weight: 700; }
+  #tab-help .tok { fill: var(--down); font-weight: 700; }
+  #tab-help .tsf { fill: var(--card); font-weight: 700; }
   @media (max-width: 720px) {
     thead { display: none; }
     tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -70,7 +138,7 @@
     .row label { flex: 1 1 140px; }
   }
   @media print {
-    .no-print { display: none !important; }
+    .no-print, .tabbar, #tab-sync, #tab-help { display: none !important; }
     body { background: #fff; color: #000; }
     .card { border: none; }
   }
@@ -82,6 +150,7 @@
     <h1>黃金飾品售價計算</h1>
     <span class="sync no-print" id="sync">未設定同步</span>
   </div>
+  <section id="tab-price" class="tab" role="tabpanel" aria-label="價格">
   <div class="sub">輸入今日公告金價，所有商品售價自動重算。手機、電腦資料自動同步。</div>
 
   <div class="card">
@@ -118,19 +187,14 @@
     </div>
   </div>
 
-  <div class="card no-print">
-    <details>
-      <summary>③ 計算公式</summary>
-      <div class="formula">
-        售價 = 重量 × 金價 + 工錢（小數無條件捨去到 1 元）<br>
-        <small>（1 台兩 = 10 台錢 = 37.5 公克；重量與金價單位不同時會自動換算）</small>
-      </div>
-    </details>
-  </div>
+  <p class="formula-foot">售價 = 重量 × 金價 + 工錢（小數無條件捨去到 1 元）<br>
+    （1 台兩 = 10 台錢 = 37.5 公克；重量與金價單位不同時會自動換算）</p>
+  </section>
 
-  <div class="card no-print">
-    <details id="syncPanel">
-      <summary>④ 同步設定（每台裝置第一次使用時設定）</summary>
+  <section id="tab-sync" class="tab" role="tabpanel" aria-label="同步設定" hidden>
+    <div class="card">
+      <h2 class="tab-title">同步設定</h2>
+      <p class="sub" style="margin-top:0">每台裝置第一次使用時設定一次。貼上金鑰後按「儲存並連線」，右上角變成綠色「已同步」就完成。</p>
       <div class="row">
         <label>GitHub 帳號
           <input id="cfgOwner" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -147,15 +211,247 @@
         <button id="syncNow" class="ghost">立即同步</button>
         <button id="cfgClear" class="ghost">清除這台裝置的金鑰</button>
       </div>
-      <div class="hint">金鑰只存在這台裝置的瀏覽器裡，不會出現在網頁原始碼中。</div>
-    </details>
-  </div>
+      <div class="hint">金鑰只存在這台裝置的這個瀏覽器裡，不會出現在網頁原始碼中。Mac 用桌面捷徑（Chrome）、iPhone 用主畫面圖示，各自要貼一次。</div>
+    </div>
+  </section>
+
+  <section id="tab-help" class="tab" role="tabpanel" aria-label="說明" hidden>
+    <div class="part">
+      <h2 class="tab-title" style="margin:0">看圖說明</h2>
+      <p class="lead">遇到問題，先看右上角的燈，再往下找長得一樣的圖。</p>
+    </div>
+
+    <div class="part">
+      <h3>它怎麼運作</h3>
+      <figure class="panel">
+        <svg class="art" viewBox="0 0 600 290" role="img" aria-label="iPhone 和 Mac 都把資料寫進中間的雲端筆記本，兩台各有一把鑰匙">
+          <defs>
+            <marker id="help-ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="g"/></marker>
+          </defs>
+          <rect x="52" y="52" width="92" height="164" rx="16" class="sf"/>
+          <rect x="52" y="52" width="92" height="164" rx="16" class="k"/>
+          <rect x="66" y="74" width="64" height="112" rx="4" class="gs"/>
+          <text x="98" y="138" text-anchor="middle" class="tg" font-size="26">金</text>
+          <line x1="86" y1="202" x2="110" y2="202" class="k"/>
+          <text x="98" y="250" text-anchor="middle" class="t" font-size="20">iPhone</text>
+          <g transform="translate(78 262)"><circle cx="8" cy="8" r="7" class="kg"/><path d="M15 8H40M32 8v6M38 8v5" class="kg"/></g>
+          <rect x="236" y="40" width="128" height="170" rx="10" class="gs"/>
+          <rect x="236" y="40" width="128" height="170" rx="10" class="kg"/>
+          <g class="kg"><circle cx="236" cy="70" r="6"/><circle cx="236" cy="100" r="6"/><circle cx="236" cy="130" r="6"/><circle cx="236" cy="160" r="6"/><circle cx="236" cy="190" r="6"/></g>
+          <line x1="262" y1="82" x2="342" y2="82" class="km"/>
+          <line x1="262" y1="108" x2="342" y2="108" class="km"/>
+          <line x1="262" y1="134" x2="320" y2="134" class="km"/>
+          <line x1="262" y1="160" x2="335" y2="160" class="km"/>
+          <text x="300" y="240" text-anchor="middle" class="t" font-size="20">雲端筆記本</text>
+          <text x="300" y="264" text-anchor="middle" class="tm" font-size="15">GitHub</text>
+          <rect x="450" y="70" width="124" height="86" rx="8" class="sf"/>
+          <rect x="450" y="70" width="124" height="86" rx="8" class="k"/>
+          <rect x="462" y="82" width="100" height="62" rx="3" class="gs"/>
+          <text x="512" y="122" text-anchor="middle" class="tg" font-size="26">金</text>
+          <path d="M434 170H590L578 184H446Z" class="k"/>
+          <text x="512" y="216" text-anchor="middle" class="t" font-size="20">Mac</text>
+          <g transform="translate(492 228)"><circle cx="8" cy="8" r="7" class="kg"/><path d="M15 8H40M32 8v6M38 8v5" class="kg"/></g>
+          <path d="M152 112H222" class="kg" marker-end="url(#help-ar)"/>
+          <path d="M222 150H152" class="kg" marker-end="url(#help-ar)"/>
+          <path d="M442 112H378" class="kg" marker-end="url(#help-ar)"/>
+          <path d="M378 150H442" class="kg" marker-end="url(#help-ar)"/>
+          <text x="187" y="100" text-anchor="middle" class="tm" font-size="14">寫入</text>
+          <text x="187" y="172" text-anchor="middle" class="tm" font-size="14">抓回</text>
+          <text x="410" y="100" text-anchor="middle" class="tm" font-size="14">寫入</text>
+          <text x="410" y="172" text-anchor="middle" class="tm" font-size="14">抓回</text>
+        </svg>
+      </figure>
+      <p class="say">兩台都把資料寫進<b>同一本雲端筆記本</b>。每台都要有<b>自己的一把鑰匙</b>，才打得開。</p>
+    </div>
+
+    <div class="part">
+      <h3>每天這樣用</h3>
+      <div class="steps">
+        <div class="step">
+          <span class="n">1</span>
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="點金價圖示或桌面捷徑">
+            <rect x="66" y="8" width="68" height="114" rx="12" class="sf"/>
+            <rect x="66" y="8" width="68" height="114" rx="12" class="k"/>
+            <rect x="84" y="40" width="32" height="32" rx="8" class="g"/>
+            <text x="100" y="63" text-anchor="middle" class="tsf" font-size="18">金</text>
+            <circle cx="100" cy="56" r="26" class="kg" opacity=".5"/>
+            <circle cx="100" cy="56" r="36" class="kg" opacity=".25"/>
+          </svg>
+          <p>點「金價」圖示或桌面捷徑</p>
+        </div>
+        <div class="step">
+          <span class="n">2</span>
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="右上角是綠色的已同步">
+            <rect x="22" y="46" width="156" height="38" rx="19" class="sf"/>
+            <rect x="22" y="46" width="156" height="38" rx="19" class="kok"/>
+            <text x="100" y="71" text-anchor="middle" class="tok" font-size="17">已同步 10:32:15</text>
+          </svg>
+          <p>看到綠燈</p>
+        </div>
+        <div class="step">
+          <span class="n">3</span>
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="打入金價 16650，售價自己算好">
+            <rect x="34" y="10" width="132" height="40" rx="8" class="sf"/>
+            <rect x="34" y="10" width="132" height="40" rx="8" class="k"/>
+            <text x="100" y="38" text-anchor="middle" class="t" font-size="22">16650</text>
+            <path d="M100 58V80" class="kg" marker-end="url(#help-ar)"/>
+            <path d="M46 90H140L156 106L140 122H46Z" class="gs"/>
+            <path d="M46 90H140L156 106L140 122H46Z" class="kg"/>
+            <text x="96" y="113" text-anchor="middle" class="tg" font-size="20">$17,450</text>
+          </svg>
+          <p>打今天的金價，價格自己算好</p>
+        </div>
+        <div class="step">
+          <span class="n">4</span>
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="按複製價目表，貼到 LINE">
+            <rect x="22" y="22" width="56" height="74" rx="6" class="sf"/>
+            <rect x="22" y="22" width="56" height="74" rx="6" class="k"/>
+            <rect x="38" y="14" width="24" height="14" rx="4" class="g"/>
+            <line x1="34" y1="50" x2="66" y2="50" class="km"/><line x1="34" y1="64" x2="66" y2="64" class="km"/><line x1="34" y1="78" x2="58" y2="78" class="km"/>
+            <path d="M88 60H112" class="kg" marker-end="url(#help-ar)"/>
+            <path d="M124 30H182A8 8 0 0 1 190 38V82A8 8 0 0 1 182 90H146L132 104V90H124A8 8 0 0 1 116 82V38A8 8 0 0 1 124 30Z" class="okf"/>
+            <line x1="128" y1="48" x2="178" y2="48" class="lc"/>
+            <line x1="128" y1="62" x2="178" y2="62" class="lc"/>
+            <line x1="128" y1="76" x2="160" y2="76" class="lc"/>
+          </svg>
+          <p>按「複製價目表」，貼 LINE</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="part">
+      <h3>右上角的燈</h3>
+      <div class="lights">
+        <div class="light"><span class="pill p-ok">已同步 10:32:15</span><p>放心用。秒數每 30 秒會跳一次。</p></div>
+        <div class="light"><span class="pill p-wait">儲存中…</span><p>等 1～3 秒，變綠再換手機或電腦。</p></div>
+        <div class="light"><span class="pill p-bad">未同步：沒有網路（點此重試）</span><p>沒網路或鑰匙壞了。有網路後點一下燈。</p></div>
+        <div class="light"><span class="pill p-off">未設定同步</span><p><b>先別改。</b>這個瀏覽器沒有鑰匙，看下面第一張圖。</p></div>
+      </div>
+    </div>
+
+    <div class="part">
+      <h3>出問題時</h3>
+      <div class="fixes">
+        <div class="fix">
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="鑰匙放在 Chrome 的抽屜，打開的卻是 Safari 的空抽屜">
+            <rect x="10" y="24" width="84" height="84" rx="8" class="sf"/>
+            <rect x="10" y="24" width="84" height="84" rx="8" class="k"/>
+            <line x1="10" y1="54" x2="94" y2="54" class="k"/>
+            <text x="52" y="45" text-anchor="middle" class="t" font-size="14">Chrome</text>
+            <g transform="translate(30 74)"><circle cx="7" cy="7" r="6" class="kg"/><path d="M13 7H40M33 7v5M38 7v4" class="kg"/></g>
+            <rect x="106" y="24" width="84" height="84" rx="8" class="sf"/>
+            <rect x="106" y="24" width="84" height="84" rx="8" class="k"/>
+            <line x1="106" y1="54" x2="190" y2="54" class="k"/>
+            <text x="148" y="45" text-anchor="middle" class="t" font-size="14">Safari</text>
+            <text x="148" y="94" text-anchor="middle" class="tm" font-size="28">?</text>
+          </svg>
+          <div class="txt">
+            <h3>灰燈「未設定同步」</h3>
+            <p class="why">鑰匙只放在當初貼的那個瀏覽器。換一個瀏覽器，就找不到鑰匙。</p>
+            <p class="do">改用原本的入口開（Mac 桌面捷徑、iPhone 主畫面圖示）；真的不行就到「同步設定」重貼金鑰。</p>
+          </div>
+        </div>
+        <div class="fix">
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="1 錢等於 3.75 克，單位選錯價格差 3.75 倍">
+            <path d="M14 30H76L92 50L76 70H14Z" class="gs"/><path d="M14 30H76L92 50L76 70H14Z" class="kg"/>
+            <text x="50" y="57" text-anchor="middle" class="t" font-size="20">1 錢</text>
+            <text x="100" y="98" text-anchor="middle" class="tg" font-size="18">= 3.75 克</text>
+            <path d="M108 30H170L186 50L170 70H108Z" class="sf"/><path d="M108 30H170L186 50L170 70H108Z" class="k"/>
+            <text x="144" y="57" text-anchor="middle" class="t" font-size="20">1 克</text>
+          </svg>
+          <div class="txt">
+            <h3>價格跟自己算的不一樣</h3>
+            <p class="why">網頁只照妳給的數字算。金價、重量單位、工錢，有一個不對答案就不對。</p>
+            <p class="do">看「目前採用」是今天的金價；克重的商品，單位要選「克」。</p>
+          </div>
+        </div>
+        <div class="fix">
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="另一台最多等 30 秒，或點一下右上角的燈">
+            <circle cx="54" cy="64" r="40" class="sf"/><circle cx="54" cy="64" r="40" class="k"/>
+            <path d="M54 64V36M54 64L72 74" class="k"/>
+            <text x="54" y="122" text-anchor="middle" class="tm" font-size="14">最多 30 秒</text>
+            <rect x="112" y="46" width="78" height="34" rx="17" class="sf"/><rect x="112" y="46" width="78" height="34" rx="17" class="kok"/>
+            <text x="151" y="68" text-anchor="middle" class="tok" font-size="14">點我</text>
+          </svg>
+          <div class="txt">
+            <h3>另一台沒看到剛改的</h3>
+            <p class="why">剛改的還在寫進筆記本，或另一台還沒到下一次 30 秒。</p>
+            <p class="do">等這台變綠燈，到另一台點一下右上角的燈。</p>
+          </div>
+        </div>
+        <div class="fix">
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="鑰匙在 2027 年 10 月 23 日到期">
+            <g transform="translate(14 52)"><circle cx="14" cy="14" r="13" class="kg"/><path d="M27 14H74M60 14v10M70 14v8" class="kg"/></g>
+            <rect x="112" y="22" width="74" height="86" rx="8" class="sf"/><rect x="112" y="22" width="74" height="86" rx="8" class="k"/>
+            <rect x="112" y="22" width="74" height="24" rx="8" class="badf"/>
+            <text x="149" y="40" text-anchor="middle" class="tsf" font-size="13">2027</text>
+            <text x="149" y="86" text-anchor="middle" class="t" font-size="24">10/23</text>
+            <path d="M88 44L100 32M88 32L100 44" class="kbad"/>
+          </svg>
+          <div class="txt">
+            <h3>紅燈「金鑰錯誤或已過期」</h3>
+            <p class="why">鑰匙 2027/10/23 到期，日曆 10/16 會先提醒。</p>
+            <p class="do">到 GitHub 重新產生一把，在「同步設定」分頁貼上，Mac、iPhone 各一次。</p>
+          </div>
+        </div>
+        <div class="fix">
+          <svg class="art" viewBox="0 0 200 130" role="img" aria-label="網頁換成新版時會自己重新整理">
+            <path d="M66 36A36 36 0 1 1 40 92" class="kg"/>
+            <path d="M40 92L36 74M40 92L57 86" class="kg"/>
+            <rect x="112" y="46" width="76" height="36" rx="10" class="gs"/><rect x="112" y="46" width="76" height="36" rx="10" class="kg"/>
+            <text x="150" y="70" text-anchor="middle" class="tg" font-size="18">新版</text>
+          </svg>
+          <div class="txt">
+            <h3>網頁自己重新整理</h3>
+            <p class="why">程式有新版，網頁自己換新。只在妳沒打字、資料都存好時才會發生。</p>
+            <p class="do">不用管，資料不會掉。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="part">
+      <h3>記住這幾件事</h3>
+      <div class="rules">
+        <div>
+          <strong>要</strong>
+          <ul>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="okf"/><path d="M9 15.5l4 4 8-9" class="lc"/></svg><span>綠燈才改</span></li>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="okf"/><path d="M9 15.5l4 4 8-9" class="lc"/></svg><span>每台固定用同一個入口打開</span></li>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="okf"/><path d="M9 15.5l4 4 8-9" class="lc"/></svg><span>鑰匙存在「密碼」App</span></li>
+          </ul>
+        </div>
+        <div>
+          <strong>不要</strong>
+          <ul>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="badf"/><path d="M10 10l10 10M20 10l-10 10" class="lc"/></svg><span>用私密或無痕視窗開</span></li>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="badf"/><path d="M10 10l10 10M20 10l-10 10" class="lc"/></svg><span>清除瀏覽器的網站資料</span></li>
+            <li><svg viewBox="0 0 30 30" width="28" height="28" aria-hidden="true"><circle cx="15" cy="15" r="13" class="badf"/><path d="M10 10l10 10M20 10l-10 10" class="lc"/></svg><span>兩台同時改同一格</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <p class="rescue"><b>真的亂掉也別怕。</b>筆記本每次修改都留一份副本，任何時間的資料都救得回來。先別再改，截圖右上角，交給幫妳設定的人。</p>
+  </section>
 </div>
+
+<nav class="tabbar" role="tablist" aria-label="分頁">
+  <button type="button" role="tab" id="tabbtn-price" data-tab="price" aria-selected="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1.5"/></svg>價格
+  </button>
+  <button type="button" role="tab" id="tabbtn-sync" data-tab="sync" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg>同步設定
+  </button>
+  <button type="button" role="tab" id="tabbtn-help" data-tab="help" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg>說明
+  </button>
+</nav>
 <div class="toast" id="toast"></div>
 
 <script>
 // bump on every upload of this file: open pages compare it with the live copy and reload themselves
-const APP_VERSION = "2026-10-25a";
+const APP_VERSION = "2026-10-25b";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -580,12 +876,12 @@ $("cfgSave").addEventListener("click", () => {
   if (!configured()) { toast("三個欄位都要填"); return; }
   writeJSON(CFG_KEY, cfg);
   remoteSha = null; setDirty(false); setBase(null);
-  $("syncPanel").open = false;
+  showTab("price");
   pull();
 });
 $("sync").addEventListener("click", () => {
   if (configured()) pull();
-  else $("syncPanel").open = true;
+  else showTab("sync");
 });
 $("syncNow").addEventListener("click", () => {
   if (!configured()) { toast("請先完成同步設定"); return; }
@@ -602,9 +898,24 @@ $("cfgClear").addEventListener("click", () => {
 $("cfgOwner").value = cfg.owner || "";
 $("cfgRepo").value = cfg.repo || "";
 $("cfgToken").value = cfg.token || "";
+
+/* ---------- 分頁 ---------- */
+const TABS = ["price", "sync", "help"];
+function showTab(name) {
+  for (const t of TABS) {
+    $("tab-" + t).hidden = t !== name;
+    $("tabbtn-" + t).setAttribute("aria-selected", String(t === name));
+  }
+  // #sync / #help in the address keeps the tab across the auto-update reload
+  try { history.replaceState(null, "", name === "price" ? location.pathname + location.search : "#" + name); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll(".tabbar button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
 renderAll();
-if (configured()) pull();
-else { setSync("", "未設定同步"); $("syncPanel").open = true; }
+const startTab = location.hash.slice(1);
+if (configured()) { pull(); showTab(TABS.includes(startTab) ? startTab : "price"); }
+else { setSync("", "未設定同步"); showTab("sync"); }
 </script>
 </body>
 </html>
