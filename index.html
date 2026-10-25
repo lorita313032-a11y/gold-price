@@ -70,6 +70,12 @@
   .tabbar button:focus-visible { outline: 2px solid var(--gold); outline-offset: -4px; }
   .tabbar button:hover { filter: none; color: var(--gold); }
   .tab-title { font-size: 1.2rem; margin: 0 0 12px; }
+  .conn-ok { margin: 0 0 12px; color: var(--down); font-weight: 700; }
+  .conn dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+  .conn dt { color: var(--muted); font-size: .9rem; }
+  .conn dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .danger-zone { margin-top: 24px; padding-top: 16px; border-top: 1px dashed var(--line); }
+  button.warn { background: transparent; border-color: var(--up); color: var(--up); }
 
   /* help tab: the picture guide, scoped so its classes never touch the calculator's */
   #tab-help { display: grid; gap: 40px; margin-top: 16px; }
@@ -194,24 +200,40 @@
   <section id="tab-sync" class="tab" role="tabpanel" aria-label="同步設定" hidden>
     <div class="card">
       <h2 class="tab-title">同步設定</h2>
-      <p class="sub" style="margin-top:0">每台裝置第一次使用時設定一次。貼上金鑰後按「儲存並連線」，右上角變成綠色「已同步」就完成。</p>
-      <div class="row">
-        <label>GitHub 帳號
-          <input id="cfgOwner" autocomplete="off" autocapitalize="off" spellcheck="false">
-        </label>
-        <label>資料 repo 名稱
-          <input id="cfgRepo" autocomplete="off" autocapitalize="off" spellcheck="false">
-        </label>
-        <label>存取金鑰（token）
-          <input id="cfgToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
-        </label>
+
+      <div id="syncView" class="conn" hidden>
+        <p class="conn-ok">這台裝置已連線，不需要再設定。</p>
+        <dl>
+          <dt>資料位置</dt><dd id="viewTarget"></dd>
+          <dt>存取金鑰</dt><dd id="viewToken"></dd>
+        </dl>
+        <div class="actions"><button id="cfgEdit" class="ghost">變更設定</button></div>
+        <div class="hint">只有換新金鑰時才需要變更。右上角的燈點一下就會立即同步。</div>
       </div>
-      <div class="actions">
-        <button id="cfgSave">儲存並連線</button>
-        <button id="syncNow" class="ghost">立即同步</button>
-        <button id="cfgClear" class="ghost">清除這台裝置的金鑰</button>
+
+      <div id="syncEdit" hidden>
+        <p class="sub" style="margin-top:0">貼上金鑰後按「儲存並連線」，右上角變成綠色「已同步」就完成。</p>
+        <div class="row">
+          <label>GitHub 帳號
+            <input id="cfgOwner" autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+          <label>資料 repo 名稱
+            <input id="cfgRepo" autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+          <label>存取金鑰（token）
+            <input id="cfgToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="cfgSave">儲存並連線</button>
+          <button id="cfgCancel" class="ghost">取消</button>
+        </div>
+        <div class="hint">金鑰只存在這台裝置的這個瀏覽器裡，不會出現在網頁原始碼中。Mac 用桌面捷徑（Chrome）、iPhone 用主畫面圖示，各自要貼一次。</div>
+        <div class="danger-zone" id="dangerZone">
+          <button id="cfgClear" class="warn">清除這台裝置的金鑰</button>
+          <div class="hint">清除後這台會斷線，要重新貼金鑰才能同步。商品資料不會被刪除。</div>
+        </div>
       </div>
-      <div class="hint">金鑰只存在這台裝置的這個瀏覽器裡，不會出現在網頁原始碼中。Mac 用桌面捷徑（Chrome）、iPhone 用主畫面圖示，各自要貼一次。</div>
     </div>
   </section>
 
@@ -348,7 +370,7 @@
           <div class="txt">
             <h3>灰燈「未設定同步」</h3>
             <p class="why">鑰匙只放在當初貼的那個瀏覽器。換一個瀏覽器，就找不到鑰匙。</p>
-            <p class="do">改用原本的入口開（Mac 桌面捷徑、iPhone 主畫面圖示）；真的不行就到「同步設定」重貼金鑰。</p>
+            <p class="do">改用原本的入口開（Mac 桌面捷徑、iPhone 主畫面圖示）；真的不行就到「同步設定」貼上金鑰。</p>
           </div>
         </div>
         <div class="fix">
@@ -391,7 +413,7 @@
           <div class="txt">
             <h3>紅燈「金鑰錯誤或已過期」</h3>
             <p class="why">鑰匙 2027/10/23 到期，日曆 10/16 會先提醒。</p>
-            <p class="do">到 GitHub 重新產生一把，在「同步設定」分頁貼上，Mac、iPhone 各一次。</p>
+            <p class="do">到 GitHub 重新產生一把，在「同步設定」按「變更設定」貼上，Mac、iPhone 各一次。</p>
           </div>
         </div>
         <div class="fix">
@@ -451,7 +473,7 @@
 
 <script>
 // bump on every upload of this file: open pages compare it with the live copy and reload themselves
-const APP_VERSION = "2026-10-25b";
+const APP_VERSION = "2026-10-25c";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -871,11 +893,36 @@ $("copyBtn").addEventListener("click", async () => {
 });
 $("printBtn").addEventListener("click", () => window.print());
 
+// a connected device shows read-only details; the form opens only via 變更設定
+let editingCfg = false;
+function fillCfgFields() {
+  $("cfgOwner").value = cfg.owner || "";
+  $("cfgRepo").value = cfg.repo || "";
+  $("cfgToken").value = cfg.token || "";
+}
+function renderSyncTab() {
+  const connected = configured();
+  $("syncView").hidden = !connected || editingCfg;
+  $("syncEdit").hidden = connected && !editingCfg;
+  $("cfgCancel").hidden = !connected;
+  $("dangerZone").hidden = !connected;
+  if (connected) {
+    $("viewTarget").textContent = `${cfg.owner} / ${cfg.repo}`;
+    $("viewToken").textContent = "已儲存（末 4 碼 ••••" + cfg.token.slice(-4) + "）";
+  }
+}
+
+$("cfgEdit").addEventListener("click", () => { editingCfg = true; fillCfgFields(); renderSyncTab(); });
+$("cfgCancel").addEventListener("click", () => { editingCfg = false; fillCfgFields(); renderSyncTab(); });
 $("cfgSave").addEventListener("click", () => {
-  cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
-  if (!configured()) { toast("三個欄位都要填"); return; }
+  const next = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
+  if (!next.owner || !next.repo || !next.token) { toast("三個欄位都要填"); return; }
+  // only a new data location starts from scratch; a replaced key keeps edits still waiting to upload
+  if (next.owner !== cfg.owner || next.repo !== cfg.repo) { remoteSha = null; setDirty(false); setBase(null); }
+  cfg = next;
   writeJSON(CFG_KEY, cfg);
-  remoteSha = null; setDirty(false); setBase(null);
+  editingCfg = false;
+  renderSyncTab();
   showTab("price");
   pull();
 });
@@ -883,21 +930,18 @@ $("sync").addEventListener("click", () => {
   if (configured()) pull();
   else showTab("sync");
 });
-$("syncNow").addEventListener("click", () => {
-  if (!configured()) { toast("請先完成同步設定"); return; }
-  pull();
-});
 $("cfgClear").addEventListener("click", () => {
-  if (!confirm("清除這台裝置的金鑰？（商品資料不會被刪除）")) return;
+  if (!confirm("確定要清除這台裝置的金鑰嗎？\n清除後要重新貼金鑰才能同步（商品資料不會被刪除）。")) return;
   cfg = { owner: cfg.owner, repo: cfg.repo };
   writeJSON(CFG_KEY, cfg);
-  $("cfgToken").value = "";
+  editingCfg = false;
+  fillCfgFields();
+  renderSyncTab();
   setSync("", "未設定同步");
 });
 
-$("cfgOwner").value = cfg.owner || "";
-$("cfgRepo").value = cfg.repo || "";
-$("cfgToken").value = cfg.token || "";
+fillCfgFields();
+renderSyncTab();
 
 /* ---------- 分頁 ---------- */
 const TABS = ["price", "sync", "help"];
