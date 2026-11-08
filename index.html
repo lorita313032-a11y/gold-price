@@ -58,6 +58,9 @@
   #items tr.sub td { border-top: 1px dashed var(--line); }
   .sublabel span { color: var(--muted); font-size: .85rem; padding-left: 4px; }
   .unit-wrap { display: flex; gap: 8px; align-items: center; }
+  .name-wrap { display: flex; gap: 8px; align-items: center; }
+  .name-wrap input { flex: 1; min-width: 0; }
+  .copy-one { flex: none; padding: 6px 12px; font-size: .9rem; white-space: nowrap; }
   .add-v { padding: 4px 12px; font-size: 1.1rem; line-height: 1.2; flex: none; }
   td.num input { text-align: right; }
   .price { font-weight: 700; font-size: 1.1rem; color: var(--gold); text-align: right; white-space: nowrap; }
@@ -486,7 +489,7 @@
 
 <script>
 // bump on every upload of this file: open pages compare it with the live copy and reload themselves
-const APP_VERSION = "2026-11-08b";
+const APP_VERSION = "2026-11-08c";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -809,7 +812,7 @@ function renderItems() {
       tr.className = (first ? "first" : "sub") + (last ? " end" : "");
       tr.innerHTML = `
         ${first
-          ? `<td class="name" data-label="品名"><input data-k="name"></td>`
+          ? `<td class="name" data-label="品名"><div class="name-wrap"><input data-k="name"><button type="button" class="ghost copy-one no-print" title="複製這件商品的文字">複製</button></div></td>`
           : `<td class="name sublabel" data-label=""><span>第 ${i + 1} 組重量</span></td>`}
         <td class="num" data-label="重量"><input data-v="weight" type="number" inputmode="decimal" step="0.01" min="0" placeholder="重量"></td>
         <td data-label="單位"><div class="unit-wrap"><select data-v="wUnit">
@@ -830,6 +833,8 @@ function renderItems() {
         el.value = v[el.dataset.v] ?? "";
         el.addEventListener("input", () => { v[el.dataset.v] = el.value; save(); updateRow(tr, v); });
       });
+      const copyEl = tr.querySelector(".copy-one");
+      if (copyEl) copyEl.addEventListener("click", () => copyItem(item.id));
       const addEl = tr.querySelector(".add-v");
       if (addEl) addEl.addEventListener("click", () => {
         const prev = item.variants.at(-1);
@@ -922,27 +927,27 @@ $("addBtn").addEventListener("click", () => {
   inputs[inputs.length - 1].focus();
 });
 
+// one product's three lines; null when no group has a weight yet
+function itemText(it, cur) {
+  // groups without a weight are left out; the rest go lightest first
+  const vs = it.variants.filter(hasWeight)
+    .sort((a, b) => Number(a.weight) * GRAMS[a.wUnit] - Number(b.weight) * GRAMS[b.wUnit]);
+  if (!vs.length) return null;
+  const oneUnit = new Set(vs.map(v => v.wUnit)).size === 1;
+  const weights = oneUnit
+    ? vs.map(v => v.weight).join("/") + UNIT_NAME[vs[0].wUnit]
+    : vs.map(v => v.weight + UNIT_NAME[v.wUnit]).join("/");
+  const prices = vs.length === 1 ? fmt(variantPrice(vs[0], cur)) : vs.map(v => variantPrice(v, cur)).join("/");
+  return [String(it.name || "").trim() || "未命名", `重量：${weights}`, `售價：${prices}`].join("\n");
+}
 function priceListText() {
   const cur = state.current;
-  const lines = [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, ""];
-  for (const it of state.items) {
-    // groups without a weight yet are left out; the rest go lightest first
-    const vs = it.variants.filter(hasWeight)
-      .sort((a, b) => Number(a.weight) * GRAMS[a.wUnit] - Number(b.weight) * GRAMS[b.wUnit]);
-    if (!vs.length) continue;
-    const oneUnit = new Set(vs.map(v => v.wUnit)).size === 1;
-    const weights = oneUnit
-      ? vs.map(v => v.weight).join("/") + UNIT_NAME[vs[0].wUnit]
-      : vs.map(v => v.weight + UNIT_NAME[v.wUnit]).join("/");
-    const prices = vs.length === 1 ? fmt(variantPrice(vs[0], cur)) : vs.map(v => variantPrice(v, cur)).join("/");
-    lines.push(String(it.name || "").trim() || "未命名", `重量：${weights}`, `售價：${prices}`, "");
-  }
-  return lines.join("\n").trimEnd();
+  const blocks = state.items.map(it => itemText(it, cur)).filter(Boolean);
+  return [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, "", blocks.join("\n\n")].join("\n");
 }
-$("copyBtn").addEventListener("click", async () => {
-  if (!state.current) { toast("請先輸入今日金價"); return; }
+async function copyFresh(buildText, doneMsg) {
   // never hand a customer prices from a stale screen
-  const textReady = (async () => { if (configured()) await pull(); return priceListText(); })();
+  const textReady = (async () => { if (configured()) await pull(); return buildText(); })();
   try {
     if (window.ClipboardItem && navigator.clipboard.write) {
       // Safari only allows a clipboard write started inside the tap itself, so the text is passed as a promise
@@ -952,10 +957,24 @@ $("copyBtn").addEventListener("click", async () => {
     } else {
       await navigator.clipboard.writeText(await textReady);
     }
-    toast("已複製最新價目表，可直接貼上");
+    toast(doneMsg);
   } catch (e) {
     prompt("請手動複製：", await textReady);
   }
+}
+function copyItem(id) {
+  const it = state.items.find(x => x.id === id);
+  if (!state.current) { toast("請先輸入今日金價"); return; }
+  if (!it || !itemText(it, state.current)) { toast("這件商品還沒填重量"); return; }
+  // look the item up again after the sync: the sync replaces the item objects
+  copyFresh(() => {
+    const fresh = state.items.find(x => x.id === id);
+    return (fresh && itemText(fresh, state.current)) || "";
+  }, "已複製「" + (String(it.name || "").trim() || "未命名") + "」");
+}
+$("copyBtn").addEventListener("click", () => {
+  if (!state.current) { toast("請先輸入今日金價"); return; }
+  copyFresh(priceListText, "已複製最新價目表，可直接貼上");
 });
 $("printBtn").addEventListener("click", () => window.print());
 
