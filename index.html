@@ -53,6 +53,12 @@
   th { font-size: .8rem; color: var(--muted); font-weight: 500; white-space: nowrap; }
   .price, .diff { min-width: 80px; }
   td input { width: 100%; }
+  /* one product = a first row plus one row per extra weight group */
+  #items tr:not(.end) td { border-bottom: none; }
+  #items tr.sub td { border-top: 1px dashed var(--line); }
+  .sublabel span { color: var(--muted); font-size: .85rem; padding-left: 4px; }
+  .unit-wrap { display: flex; gap: 8px; align-items: center; }
+  .add-v { padding: 4px 12px; font-size: 1.1rem; line-height: 1.2; flex: none; }
   td.num input { text-align: right; }
   .price { font-weight: 700; font-size: 1.1rem; color: var(--gold); text-align: right; white-space: nowrap; }
   .diff { font-size: .85rem; text-align: right; white-space: nowrap; }
@@ -143,6 +149,9 @@
     td { border: none; padding: 0; }
     td::before { content: attr(data-label); display: block; font-size: .75rem; color: var(--muted); }
     td.name { grid-column: 1 / -1; }
+    #items tr:not(.end) { border-bottom: none; }
+    #items tr.sub { border-top: 1px dashed var(--line); padding-top: 10px; }
+    #items tr.sub td { border-top: none; }
     .price, .diff { text-align: left; }
     .big { width: 100%; }
     .row label { flex: 1 1 140px; }
@@ -323,7 +332,7 @@
             <path d="M100 58V80" class="kg" marker-end="url(#help-ar)"/>
             <path d="M46 90H140L156 106L140 122H46Z" class="gs"/>
             <path d="M46 90H140L156 106L140 122H46Z" class="kg"/>
-            <text x="96" y="113" text-anchor="middle" class="tg" font-size="20">$17,450</text>
+            <text x="96" y="113" text-anchor="middle" class="tg" font-size="20">$17450</text>
           </svg>
           <p>打今天的金價，價格自己算好</p>
         </div>
@@ -477,7 +486,7 @@
 
 <script>
 // bump on every upload of this file: open pages compare it with the live copy and reload themselves
-const APP_VERSION = "2026-11-08a";
+const APP_VERSION = "2026-11-08b";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -489,13 +498,19 @@ const DEFAULT_STATE = {
   current: null,
   history: [],
   items: [
-    { id: 1, name: "經典麻花手鍊", weight: 1.00, wUnit: "qian", labor: 800 },
-    { id: 2, name: "幸運草手鍊",   weight: 1.50, wUnit: "qian", labor: 1200 },
-    { id: 3, name: "素面圓珠手鍊", weight: 2.00, wUnit: "qian", labor: 1000 },
-    { id: 4, name: "貔貅編繩手鍊", weight: 0.50, wUnit: "qian", labor: 600 },
-    { id: 5, name: "細版愛心項鍊", weight: 1.20, wUnit: "qian", labor: 900 },
+    { id: 1, name: "經典麻花手鍊", variants: [{ id: "1-v1", weight: 1.00, wUnit: "qian", labor: 800 }] },
+    { id: 2, name: "幸運草手鍊",   variants: [{ id: "2-v1", weight: 1.50, wUnit: "qian", labor: 1200 }] },
   ],
 };
+
+const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// older data kept weight/unit/labor on the item itself; that becomes the item's first variant.
+// The variant id is derived from the item id so every device converts the same item to the same id.
+function normalizeItem(it) {
+  if (Array.isArray(it.variants) && it.variants.length) return it;
+  const { weight, wUnit, labor, variants, ...rest } = it;
+  return { ...rest, variants: [{ id: String(it.id) + "-v1", weight: weight ?? "", wUnit: wUnit || "qian", labor: labor ?? "" }] };
+}
 
 function readJSON(key) {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -504,7 +519,9 @@ function writeJSON(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 function withDefaults(data) {
-  return { ...structuredClone(DEFAULT_STATE), ...(data || {}) };
+  const s = { ...structuredClone(DEFAULT_STATE), ...(data || {}) };
+  s.items = (s.items || []).map(normalizeItem);
+  return s;
 }
 
 let state = withDefaults(readJSON(STORE_KEY));
@@ -513,7 +530,7 @@ if (!cfg.owner && location.hostname.endsWith(".github.io")) cfg.owner = location
 if (!cfg.repo) cfg.repo = "gold-price-data";
 
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => "$" + Math.round(n).toLocaleString("zh-TW");
+const fmt = (n) => "$" + Math.round(n);
 
 /* ---------- 計算 ---------- */
 function perGram(entry) { return entry ? entry.price / GRAMS[entry.unit] : null; }
@@ -521,11 +538,11 @@ function roundPrice(v) {
   // snap float noise first (1.2 錢 × 16700 comes out as 20039.999…), then drop the fraction
   return Math.floor(Math.round(v * 1000) / 1000);
 }
-function itemPrice(item, entry) {
+const hasWeight = v => Number(v.weight) > 0;
+function variantPrice(v, entry) {
   const g = perGram(entry);
-  if (g == null) return null;
-  const grams = (Number(item.weight) || 0) * GRAMS[item.wUnit];
-  return roundPrice(grams * g + (Number(item.labor) || 0));
+  if (g == null || !hasWeight(v)) return null;
+  return roundPrice(Number(v.weight) * GRAMS[v.wUnit] * g + (Number(v.labor) || 0));
 }
 
 /* ---------- GitHub 同步 ---------- */
@@ -586,8 +603,26 @@ function merge1(b, l, r) {
   if (same(r, b)) return l;
   return l;
 }
+// merge lists of records by id; a field named `nested` is itself a list merged the same way
+function mergeRecords(bArr, lArr, rArr, nested) {
+  const byId = arr => new Map((arr || []).map(i => [String(i.id), i]));
+  const B = byId(bArr), L = byId(lArr), R = byId(rArr);
+  const out = [];
+  for (const id of new Set([...L.keys(), ...R.keys()])) {
+    const bi = B.get(id), li = L.get(id), ri = R.get(id);
+    let v;
+    if (bi && li && ri) {
+      v = {};
+      for (const k of new Set([...Object.keys(li), ...Object.keys(ri)])) {
+        v[k] = k === nested ? mergeRecords(bi[k], li[k], ri[k]) : same(li[k], bi[k]) ? ri[k] : li[k];
+      }
+    } else v = merge1(bi, li, ri);
+    if (v) out.push(v);
+  }
+  return out;
+}
 function merge(b0, local, remote) {
-  const b = b0 || remote;
+  const b = b0 ? withDefaults(b0) : remote;
   const out = {};
   for (const k of ["priceUnit"]) out[k] = merge1(b[k], local[k], remote[k]) ?? DEFAULT_STATE[k];
 
@@ -602,19 +637,8 @@ function merge(b0, local, remote) {
   out.history = hist.slice(0, 60);
   out.current = out.history[0] || null;
 
-  const byId = arr => new Map((arr || []).map(i => [String(i.id), i]));
-  const Bi = byId(b.items), Li = byId(local.items), Ri = byId(remote.items);
-  const order = [...new Set([...Li.keys(), ...Ri.keys()])];
-  out.items = [];
-  for (const id of order) {
-    const bi = Bi.get(id), li = Li.get(id), ri = Ri.get(id);
-    let v;
-    if (bi && li && ri) {
-      v = {};
-      for (const k of new Set([...Object.keys(li), ...Object.keys(ri)])) v[k] = same(li[k], bi[k]) ? ri[k] : li[k];
-    } else v = merge1(bi, li, ri);
-    if (v) out.items.push(v);
-  }
+  out.items = mergeRecords(b.items, local.items, remote.items, "variants")
+    .map(it => it.variants && it.variants.length ? it : null).filter(Boolean);
   return out;
 }
 
@@ -778,28 +802,58 @@ function renderItems() {
     ? { id: ae.closest("tr").dataset.id, k: ae.dataset.k, s: ae.selectionStart, e: ae.selectionEnd } : null;
   tbody.innerHTML = "";
   for (const item of state.items) {
-    const tr = document.createElement("tr");
-    tr.dataset.id = item.id;
-    tr.innerHTML = `
-      <td class="name" data-label="品名"><input data-k="name"></td>
-      <td class="num" data-label="重量"><input data-k="weight" type="number" inputmode="decimal" step="0.01" min="0"></td>
-      <td data-label="單位"><select data-k="wUnit">
-        <option value="qian">錢</option><option value="gram">克</option><option value="liang">兩</option></select></td>
-      <td class="num" data-label="工錢"><input data-k="labor" type="number" inputmode="numeric" step="1" min="0"></td>
-      <td class="price" data-label="售價"></td>
-      <td class="diff" data-label="較上次"></td>
-      <td class="no-print"><button class="danger" title="刪除">✕</button></td>`;
-    tr.querySelectorAll("[data-k]").forEach(el => {
-      el.value = item[el.dataset.k];
-      el.addEventListener("input", () => { item[el.dataset.k] = el.value; save(); updateRow(tr, item); });
+    item.variants.forEach((v, i) => {
+      const first = i === 0, last = i === item.variants.length - 1;
+      const tr = document.createElement("tr");
+      tr.dataset.id = v.id;
+      tr.className = (first ? "first" : "sub") + (last ? " end" : "");
+      tr.innerHTML = `
+        ${first
+          ? `<td class="name" data-label="品名"><input data-k="name"></td>`
+          : `<td class="name sublabel" data-label=""><span>第 ${i + 1} 組重量</span></td>`}
+        <td class="num" data-label="重量"><input data-v="weight" type="number" inputmode="decimal" step="0.01" min="0" placeholder="重量"></td>
+        <td data-label="單位"><div class="unit-wrap"><select data-v="wUnit">
+          <option value="qian">錢</option><option value="gram">克</option><option value="liang">兩</option></select>
+          ${first ? `<button type="button" class="ghost add-v no-print" title="加一組重量" aria-label="加一組重量">＋</button>` : ""}</div></td>
+        <td class="num" data-label="工錢"><input data-v="labor" type="number" inputmode="numeric" step="1" min="0"></td>
+        <td class="price" data-label="售價"></td>
+        <td class="diff" data-label="較上次"></td>
+        <td class="no-print"><button class="danger" title="刪除">✕</button></td>`;
+      const nameEl = tr.querySelector('[data-k="name"]');
+      if (nameEl) {
+        nameEl.value = item.name ?? "";
+        nameEl.addEventListener("input", () => { item.name = nameEl.value; save(); });
+      }
+      tr.querySelectorAll("[data-v]").forEach(el => {
+        // data-k mirrors data-v so focus is restored after a re-render
+        el.dataset.k = el.dataset.v;
+        el.value = v[el.dataset.v] ?? "";
+        el.addEventListener("input", () => { v[el.dataset.v] = el.value; save(); updateRow(tr, v); });
+      });
+      const addEl = tr.querySelector(".add-v");
+      if (addEl) addEl.addEventListener("click", () => {
+        const prev = item.variants.at(-1);
+        const nv = { id: rid(), weight: "", wUnit: prev.wUnit, labor: prev.labor };
+        item.variants.push(nv);
+        save(); renderItems();
+        const w = tbody.querySelector(`tr[data-id="${CSS.escape(nv.id)}"] [data-v="weight"]`);
+        if (w) w.focus();
+      });
+      tr.querySelector("button.danger").addEventListener("click", () => {
+        const name = item.name || "未命名";
+        if (item.variants.length === 1) {
+          if (!confirm(`確定刪除「${name}」這件商品？`)) return;
+          state.items = state.items.filter(it => it !== item);
+        } else {
+          const w = hasWeight(v) ? `（${v.weight}${UNIT_NAME[v.wUnit]}）` : "";
+          if (!confirm(`確定刪除「${name}」的這一組重量${w}？`)) return;
+          item.variants = item.variants.filter(x => x !== v);
+        }
+        save(); renderItems();
+      });
+      tbody.appendChild(tr);
+      updateRow(tr, v);
     });
-    tr.querySelector("button.danger").addEventListener("click", () => {
-      if (!confirm(`確定刪除「${item.name || "未命名"}」？`)) return;
-      state.items = state.items.filter(i => i !== item);
-      save(); renderItems();
-    });
-    tbody.appendChild(tr);
-    updateRow(tr, item);
   }
   if (keep) {
     const el = tbody.querySelector(`tr[data-id="${CSS.escape(String(keep.id))}"] [data-k="${keep.k}"]`);
@@ -807,9 +861,9 @@ function renderItems() {
   }
 }
 
-function updateRow(tr, item) {
-  const now = itemPrice(item, state.current);
-  const before = itemPrice(item, state.history[1]);
+function updateRow(tr, v) {
+  const now = variantPrice(v, state.current);
+  const before = variantPrice(v, state.history[1]);
   tr.querySelector(".price").textContent = now == null ? "—" : fmt(now);
   const diffEl = tr.querySelector(".diff");
   if (now == null || before == null) { diffEl.textContent = "—"; diffEl.className = "diff"; return; }
@@ -862,8 +916,7 @@ $("priceUnit").addEventListener("change", e => {
 
 $("addBtn").addEventListener("click", () => {
   // random id so items added on two devices before syncing never collide
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  state.items.push({ id, name: "", weight: 1, wUnit: "qian", labor: 800 });
+  state.items.push({ id: rid(), name: "", variants: [{ id: rid(), weight: "", wUnit: "qian", labor: "" }] });
   save(); renderItems();
   const inputs = $("items").querySelectorAll('input[data-k="name"]');
   inputs[inputs.length - 1].focus();
@@ -873,7 +926,16 @@ function priceListText() {
   const cur = state.current;
   const lines = [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, ""];
   for (const it of state.items) {
-    lines.push(String(it.name || "").trim() || "未命名", `售價：${fmt(itemPrice(it, cur))}`, `重量：${it.weight}${UNIT_NAME[it.wUnit]}`, "");
+    // groups without a weight yet are left out; the rest go lightest first
+    const vs = it.variants.filter(hasWeight)
+      .sort((a, b) => Number(a.weight) * GRAMS[a.wUnit] - Number(b.weight) * GRAMS[b.wUnit]);
+    if (!vs.length) continue;
+    const oneUnit = new Set(vs.map(v => v.wUnit)).size === 1;
+    const weights = oneUnit
+      ? vs.map(v => v.weight).join("/") + UNIT_NAME[vs[0].wUnit]
+      : vs.map(v => v.weight + UNIT_NAME[v.wUnit]).join("/");
+    const prices = vs.length === 1 ? fmt(variantPrice(vs[0], cur)) : vs.map(v => variantPrice(v, cur)).join("/");
+    lines.push(String(it.name || "").trim() || "未命名", `重量：${weights}`, `售價：${prices}`, "");
   }
   return lines.join("\n").trimEnd();
 }
