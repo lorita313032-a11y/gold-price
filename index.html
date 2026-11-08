@@ -477,7 +477,7 @@
 
 <script>
 // bump on every upload of this file: open pages compare it with the live copy and reload themselves
-const APP_VERSION = "2026-10-25d";
+const APP_VERSION = "2026-11-08a";
 const STORE_KEY = "gold-price-calc-v1";
 const CFG_KEY = "gold-price-gh-config";
 const DATA_PATH = "data.json";
@@ -873,9 +873,9 @@ function priceListText() {
   const cur = state.current;
   const lines = [`【今日價目表 ${cur.date}】`, `金價：每${UNIT_NAME[cur.unit]} ${fmt(cur.price)}`, ""];
   for (const it of state.items) {
-    lines.push(`${it.name || "未命名"}（${it.weight}${UNIT_NAME[it.wUnit]}）　${fmt(itemPrice(it, cur))}`);
+    lines.push(String(it.name || "").trim() || "未命名", `售價：${fmt(itemPrice(it, cur))}`, `重量：${it.weight}${UNIT_NAME[it.wUnit]}`, "");
   }
-  return lines.join("\n");
+  return lines.join("\n").trimEnd();
 }
 $("copyBtn").addEventListener("click", async () => {
   if (!state.current) { toast("請先輸入今日金價"); return; }
